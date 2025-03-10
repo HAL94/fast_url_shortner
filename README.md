@@ -12,6 +12,7 @@ This is a project from the [roadmap.sh](https://roadmap.sh) website, project det
     - I used: `python -m venv .venv`
     - Activate `./.venv/Scripts/Activate` (on Windows)
 - install dependencies using `pip install -r requirements.txt`
+- make sure to add your env variables for PostgreSQL database (see `.env.example`)
 
 # Run with Uvicorn
 `uvicorn app.main:app --reload`
