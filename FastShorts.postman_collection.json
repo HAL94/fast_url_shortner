@@ -1,0 +1,170 @@
+{
+	"info": {
+		"_postman_id": "d6b895b7-004c-4f3b-a0c8-7c6245e0396f",
+		"name": "FastShorts",
+		"schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
+		"_exporter_id": "16057622",
+		"_collection_link": "https://grey-equinox-912343.postman.co/workspace/Playground~6331b935-0bc3-469e-9748-d092020ce3b2/collection/16057622-d6b895b7-004c-4f3b-a0c8-7c6245e0396f?action=share&source=collection_link&creator=16057622"
+	},
+	"item": [
+		{
+			"name": "Create Short URL",
+			"request": {
+				"method": "POST",
+				"header": [],
+				"body": {
+					"mode": "raw",
+					"raw": "{\r\n    \"url\": \"https://www.example.com/some/long/url\"\r\n}",
+					"options": {
+						"raw": {
+							"language": "json"
+						}
+					}
+				},
+				"url": {
+					"raw": "http://localhost:8000/api/v1/shorten",
+					"protocol": "http",
+					"host": [
+						"localhost"
+					],
+					"port": "8000",
+					"path": [
+						"api",
+						"v1",
+						"shorten"
+					]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "Get URL Access Count",
+			"request": {
+				"method": "GET",
+				"header": [],
+				"url": {
+					"raw": "http://localhost:8000/api/v1/shorten/pgZKtE/stats",
+					"protocol": "http",
+					"host": [
+						"localhost"
+					],
+					"port": "8000",
+					"path": [
+						"api",
+						"v1",
+						"shorten",
+						"pgZKtE",
+						"stats"
+					]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "Get Short URL",
+			"request": {
+				"method": "GET",
+				"header": [],
+				"url": {
+					"raw": "http://localhost:8000/api/v1/shorten/pgZKtE",
+					"protocol": "http",
+					"host": [
+						"localhost"
+					],
+					"port": "8000",
+					"path": [
+						"api",
+						"v1",
+						"shorten",
+						"pgZKtE"
+					]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "Update Short URL",
+			"request": {
+				"method": "PUT",
+				"header": [],
+				"body": {
+					"mode": "raw",
+					"raw": "{\r\n    \"url\": \"https://www.example.com/some/long/url/deep-link/23\"\r\n}",
+					"options": {
+						"raw": {
+							"language": "json"
+						}
+					}
+				},
+				"url": {
+					"raw": "http://localhost:8000/api/v1/shorten/awdgc4",
+					"protocol": "http",
+					"host": [
+						"localhost"
+					],
+					"port": "8000",
+					"path": [
+						"api",
+						"v1",
+						"shorten",
+						"awdgc4"
+					]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "Delete Short URL",
+			"request": {
+				"method": "DELETE",
+				"header": [],
+				"url": {
+					"raw": "http://localhost:8000/api/v1/shorten/pUZ3qE",
+					"protocol": "http",
+					"host": [
+						"localhost"
+					],
+					"port": "8000",
+					"path": [
+						"api",
+						"v1",
+						"shorten",
+						"pUZ3qE"
+					]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "Create Bulk Short Urls",
+			"request": {
+				"method": "POST",
+				"header": [],
+				"body": {
+					"mode": "raw",
+					"raw": "[\r\n    {\r\n        \"url\": \"https://www.example.com/some/long/url/new\"\r\n    },\r\n    {\r\n        \"url\": \"https://www.example.com/some/long/url/deep-link\"\r\n    }\r\n]",
+					"options": {
+						"raw": {
+							"language": "json"
+						}
+					}
+				},
+				"url": {
+					"raw": "http://localhost:8000/api/v1/shorten/bulk-upsert",
+					"protocol": "http",
+					"host": [
+						"localhost"
+					],
+					"port": "8000",
+					"path": [
+						"api",
+						"v1",
+						"shorten",
+						"bulk-upsert"
+					]
+				}
+			},
+			"response": []
+		}
+	]
+}

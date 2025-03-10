@@ -1,0 +1,19 @@
+.env
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Distribution / packaging
+.env
+build/
+dist/
+*.egg-info/
+
+# Logs and databases
+*.log
+*.sql
+*.sqlite
+
+# Environments
+.venv

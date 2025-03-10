@@ -1,0 +1,1 @@
+from app.api.v1.short_urls.model import ShortUrl
