@@ -9,7 +9,7 @@ from app.core.exceptions import NotFoundException, ServerFailException
 from app.core.config import AppSettings
 
 from .exceptions import ShortUrlDeleteFail, ShortUrlNotFound
-from .schema import ShortUrlCreateRequest, ShortUrlCreateResult, ShortUrlGetResult, ShortUrlUpdateRequest, ShortUrlUpdateResult
+from .schema import ShortUrlCreateRequest, ShortUrlCreateResult, ShortUrlGetResult, ShortUrlRead, ShortUrlUpdateRequest, ShortUrlUpdateResult
 from .service import URLShortenerService
 
 settings = AppSettings()
@@ -41,9 +41,11 @@ async def upsert_many(
 async def get_url_by_code(short_code: str, url_short_service: URLShortenerService = Depends(URLShortenerService)):
     try:
         short_url = await url_short_service.get_short_url(short_code)
-        return RedirectResponse(url=short_url.url)
-    except ShortUrlNotFound:
-        raise NotFoundException(detail="Short Url not found")
+        if not short_url:
+            raise NotFoundException
+        return AppResponse(data=short_url)
+    except NotFoundException as e:
+        raise NotFoundException(detail="Short Url not found") from e
 
 
 @router.get('/{short_code}/stats', response_model=AppResponse[ShortUrlGetResult])

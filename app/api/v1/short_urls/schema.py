@@ -1,6 +1,7 @@
 
 
 from datetime import datetime
+from typing import Optional
 from pydantic import AliasGenerator, BaseModel, ConfigDict
 from pydantic.alias_generators import to_camel
 
@@ -18,6 +19,9 @@ class ShortUrlCreate(BaseModel):
     url: str
     short_code: str
 
+class ShortUrlUpdate(BaseModel):
+    url: str
+    access_count: Optional[int] = None
 
 class ShortUrlCreateRequest(BaseModel):
     url: str

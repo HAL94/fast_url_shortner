@@ -16,9 +16,9 @@ app = create_application(router=router, settings=settings)
 async def generic_exception_logger(request: Request, exc: Exception):
     """Logs all unhandled exceptions and returns a proper response."""
     error_msg = exc.__str__()
-    logger.exception(f"An unhandled exception occurred: {error_msg}")
+    # logger.exception(f"An unhandled exception occurred: {error_msg}")
     app_response = AppResponse(success=False, status_code=500, message=(
                 f"Failed method {request.method} at URL {request.url}."
-                f"Exception message is: {error_msg}."
+                f" Exception message is: {error_msg}."
             ))
     return JSONResponse(content=app_response.__dict__)

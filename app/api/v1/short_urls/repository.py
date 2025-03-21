@@ -1,138 +1,152 @@
 
-from sqlalchemy import delete, func, insert, select, update
+# from sqlalchemy import delete, func, insert, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.v1.short_urls.exceptions import ShortUrlDeleteFail, ShortUrlNotFound
+# from app.api.v1.short_urls.exceptions import ShortUrlDeleteFail, ShortUrlNotFound
+from fastapi import Depends
+from app.api.v1.short_urls.schema import ShortUrlRead
+from app.core.db.base_repo import BaseRepo
+from app.core.db.database import get_async_session
 
-from .schema import ShortUrlCreate, ShortUrlCreateResult, ShortUrlRead
+# from .schema import ShortUrlCreate, ShortUrlCreateResult, ShortUrlRead
 from .model import ShortUrl
 
 
-class URLShortRepository:
-    def __init__(self, session: AsyncSession):
-        self.session = session
+def get_short_url_repo(db: AsyncSession = Depends(get_async_session())):
+    return URLShortRepository(session=db)
 
-    async def get_short_url_and_update_access_count(self, short_code: str):
-        session = self.session
 
-        short_url = await session.scalar(
-            select(ShortUrl).filter(ShortUrl.short_code == short_code)
-        )
+class URLShortRepository(BaseRepo[ShortUrl, ShortUrlRead]):
+    __dbmodel__ = ShortUrl
+    __model__ = ShortUrlRead
+    pass
 
-        if short_url:
-            short_url.access_count += 1
-            await session.commit()
-        else:
-            raise ShortUrlNotFound
 
-        await session.close()
+# class URLShortRepository:
+#     def __init__(self, session: AsyncSession):
+#         self.session = session
 
-        return short_url
+#     async def get_short_url_and_update_access_count(self, short_code: str):
+#         session = self.session
 
-    async def get_short_url_stats(self, short_code: str, throw_error=True) -> ShortUrl | None:
-        session = self.session
+#         short_url = await session.scalar(
+#             select(ShortUrl).filter(ShortUrl.short_code == short_code)
+#         )
 
-        short_url = await session.scalar(select(ShortUrl).filter(ShortUrl.short_code == short_code))
+#         if short_url:
+#             short_url.access_count += 1
+#             await session.commit()
+#         else:
+#             raise ShortUrlNotFound
 
-        if not short_url and throw_error:
-            raise ShortUrlNotFound
-        elif not short_url and not throw_error:
-            return None
+#         await session.close()
 
-        return short_url
-    
-    async def get_by_url(self, url: str) -> ShortUrl | None:
-        session = self.session
-        
-        short_url = await session.scalar(
-            select(ShortUrl).filter(ShortUrl.url == url)
-        )
-        
-        if not short_url:
-            raise ShortUrlNotFound
-        
-        return short_url
+#         return short_url
 
-    async def create_short_url(self, payload: ShortUrlCreate) -> ShortUrlCreateResult | None:
-        session = self.session
+#     async def get_short_url_stats(self, short_code: str, throw_error=True) -> ShortUrl | None:
+#         session = self.session
 
-        short_url = await session.scalar(
-            select(ShortUrl).filter(ShortUrl.short_code == payload.short_code)
-        )
+#         short_url = await session.scalar(select(ShortUrl).filter(ShortUrl.short_code == short_code))
 
-        if short_url:
-            await session.close()
-            return ShortUrlCreateResult.model_validate(short_url.__dict__)
+#         if not short_url and throw_error:
+#             raise ShortUrlNotFound
+#         elif not short_url and not throw_error:
+#             return None
 
-        short_url = ShortUrl(
-            url=payload.url, short_code=payload.short_code)
+#         return short_url
 
-        created_short_url = await session.scalar(
-            insert(ShortUrl).values(
-                {
-                    "url": short_url.url,
-                    "short_code": short_url.short_code
-                }
-            ).returning(ShortUrl)
-        )
+#     async def get_by_url(self, url: str) -> ShortUrl | None:
+#         session = self.session
 
-        await session.commit()
+#         short_url = await session.scalar(
+#             select(ShortUrl).filter(ShortUrl.url == url)
+#         )
 
-        return ShortUrlCreateResult.model_validate(created_short_url.__dict__)
+#         if not short_url:
+#             raise ShortUrlNotFound
 
-    async def update_short_url(self, short_code: str, new_url: str) -> ShortUrl:
-        session = self.session
+#         return short_url
 
-        updated_short_url = await session.scalar(
-            update(ShortUrl).values(url=new_url).where(
-                ShortUrl.short_code == short_code).returning(ShortUrl)
-        )
+#     async def create_short_url(self, payload: ShortUrlCreate) -> ShortUrlCreateResult | None:
+#         session = self.session
 
-        if updated_short_url is None:
-            raise ShortUrlNotFound
+#         short_url = await session.scalar(
+#             select(ShortUrl).filter(ShortUrl.short_code == payload.short_code)
+#         )
 
-        await session.commit()
+#         if short_url:
+#             await session.close()
+#             return ShortUrlCreateResult.model_validate(short_url.__dict__)
 
-        return updated_short_url
+#         short_url = ShortUrl(
+#             url=payload.url, short_code=payload.short_code)
 
-    async def delete_short_url(self, short_code: str) -> ShortUrl:
-        session = self.session
+#         created_short_url = await session.scalar(
+#             insert(ShortUrl).values(
+#                 {
+#                     "url": short_url.url,
+#                     "short_code": short_url.short_code
+#                 }
+#             ).returning(ShortUrl)
+#         )
 
-        short_url = await session.scalar(
-            delete(ShortUrl).where(ShortUrl.short_code == short_code).returning(ShortUrl)
-        )
+#         await session.commit()
 
-        await session.commit()
+#         return ShortUrlCreateResult.model_validate(created_short_url.__dict__)
 
-        if not short_url:
-            raise ShortUrlNotFound
+#     async def update_short_url(self, short_code: str, new_url: str) -> ShortUrl:
+#         session = self.session
 
-        return short_url
+#         updated_short_url = await session.scalar(
+#             update(ShortUrl).values(url=new_url).where(
+#                 ShortUrl.short_code == short_code).returning(ShortUrl)
+#         )
 
-    async def upsert_bulk_urls(self, payload: list[ShortUrlCreate]) -> list[ShortUrlRead]:
-        from sqlalchemy.dialects.postgresql import insert as pg_insert
-        
-        session = self.session
+#         if updated_short_url is None:
+#             raise ShortUrlNotFound
 
-        stmt = pg_insert(ShortUrl).values(
-            [{"url": item.url, "short_code": item.short_code}
-                for item in payload]
-        )
+#         await session.commit()
 
-        # essentially makes an insert also an upsert (dialect specific)
-        stmt = stmt.on_conflict_do_update(
-            index_elements=[ShortUrl.url], set_=dict(                
-                short_code=stmt.excluded.short_code,
-                updated_at=func.now()
-            )
-        )
+#         return updated_short_url
 
-        short_urls_scalars = await session.scalars(
-            stmt.returning(ShortUrl), execution_options={"populate_existing": True}
-        )
+#     async def delete_short_url(self, short_code: str) -> ShortUrl:
+#         session = self.session
 
-        await session.commit()
+#         short_url = await session.scalar(
+#             delete(ShortUrl).where(ShortUrl.short_code == short_code).returning(ShortUrl)
+#         )
 
-        created_short_urls = short_urls_scalars.all()
-        
-        return created_short_urls
+#         await session.commit()
+
+#         if not short_url:
+#             raise ShortUrlNotFound
+
+#         return short_url
+
+#     async def upsert_bulk_urls(self, payload: list[ShortUrlCreate]) -> list[ShortUrlRead]:
+#         from sqlalchemy.dialects.postgresql import insert as pg_insert
+
+#         session = self.session
+
+#         stmt = pg_insert(ShortUrl).values(
+#             [{"url": item.url, "short_code": item.short_code}
+#                 for item in payload]
+#         )
+
+#         # essentially makes an insert also an upsert (dialect specific)
+#         stmt = stmt.on_conflict_do_update(
+#             index_elements=[ShortUrl.url], set_=dict(
+#                 short_code=stmt.excluded.short_code,
+#                 updated_at=func.now()
+#             )
+#         )
+
+#         short_urls_scalars = await session.scalars(
+#             stmt.returning(ShortUrl), execution_options={"populate_existing": True}
+#         )
+
+#         await session.commit()
+
+#         created_short_urls = short_urls_scalars.all()
+
+#         return created_short_urls
