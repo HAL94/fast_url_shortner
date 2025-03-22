@@ -6,6 +6,7 @@ from pydantic import BaseModel
 from sqlalchemy import delete, insert, select, update
 from sqlalchemy.sql.elements import ColumnElement
 
+from app.api.v1.short_urls.model import ShortUrl
 from app.core.db.database import Base
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm.attributes import InstrumentedAttribute
@@ -27,7 +28,7 @@ class BaseRepo(Generic[DbModel, PydanticModel]):
     def _model(self) -> PydanticModel:
         return self.__model__
 
-    async def create(self, data: BaseModel, return_model: Optional[BaseModel | PydanticModel] = PydanticModel):
+    async def create(self, data: BaseModel, return_model: Optional[BaseModel | PydanticModel] = None):
         """
         Accepts a Pydantic model as data, creates a new record in the database, catches
         any integrity errors, and returns the record as pydantic model.
@@ -44,7 +45,54 @@ class BaseRepo(Generic[DbModel, PydanticModel]):
                 data.model_dump(exclude_none=True)).returning(self.__dbmodel__)
         )
         await session.commit()
+        
+        if not return_model:
+            return_model = self._model
+            
         return return_model(**created_db_model.dict())
+    
+    async def upsert_many(self, 
+                          data: list[BaseModel],  
+                          index_elements: list[InstrumentedAttribute] | None = None,
+                          update_fields: list[str] | None = None,
+                          return_model: Optional[list[BaseModel | PydanticModel]] = None):
+        
+        if not index_elements:
+            raise ValueError("Must provide 'index_elements' to handle conflicts")
+        
+        if not update_fields:
+            raise ValueError("Must provide 'update_fields' to handle which fields to update")
+        
+        from sqlalchemy.dialects.postgresql import insert as pg_insert
+        
+        session = self.session
+        
+                        
+        stmt = pg_insert(self.__dbmodel__).values(
+            [item.model_dump() for item in data]
+        )
+        
+        update_ = { key: getattr(stmt.excluded, key) for key in update_fields }
+        
+        stmt = stmt.on_conflict_do_update(
+            index_elements=index_elements,
+            set_=update_
+        )
+        
+        updated_or_created_data = await session.scalars(
+            stmt.returning(self.__dbmodel__), execution_options={"populate_existing": True}
+        )
+        
+        await session.commit()
+        
+        
+        if not return_model:
+            return_model = self._model
+            
+        result = updated_or_created_data.all()
+        
+        return [return_model(**item.dict()) for item in result]
+        
 
     async def get_one_or_none(self,
                               val: Any,
@@ -102,7 +150,7 @@ class BaseRepo(Generic[DbModel, PydanticModel]):
         
 
     async def delete_one(self, val: Any, field: InstrumentedAttribute | None = None, where_clause: list[ColumnElement[bool]] = None,
-                         return_model: Optional[BaseModel | PydanticModel] = PydanticModel, ):
+                         return_model: Optional[BaseModel | PydanticModel] = None, ):
 
         session = self.session
 
@@ -121,5 +169,11 @@ class BaseRepo(Generic[DbModel, PydanticModel]):
         )
 
         await session.commit()
+        
+        if not deleted_db_model:
+            raise NotFoundException
+        
+        if not return_model:
+            return_model = self._model
 
         return return_model(**deleted_db_model.dict())

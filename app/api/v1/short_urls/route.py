@@ -40,7 +40,7 @@ async def upsert_many(
 @router.get('/{short_code}')
 async def get_url_by_code(short_code: str, url_short_service: URLShortenerService = Depends(URLShortenerService)):
     try:
-        short_url = await url_short_service.get_short_url(short_code)
+        short_url = await url_short_service.get_short_url(short_code, update_stats=True)
         if not short_url:
             raise NotFoundException
         return AppResponse(data=short_url)
@@ -51,7 +51,7 @@ async def get_url_by_code(short_code: str, url_short_service: URLShortenerServic
 @router.get('/{short_code}/stats', response_model=AppResponse[ShortUrlGetResult])
 async def get_url_by_code(short_code: str, url_short_service: URLShortenerService = Depends(URLShortenerService)):
     try:
-        short_url = await url_short_service.get_short_url_stats(short_code)
+        short_url = await url_short_service.get_short_url(short_code)
         return AppResponse(data=short_url, status_code=200)
     except ShortUrlNotFound:
         raise NotFoundException(detail="Short Url not found")

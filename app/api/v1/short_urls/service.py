@@ -27,8 +27,12 @@ class URLShortenerService:
 
         return await self.url_short_repo.create(data=ShortUrlCreate(url=payload.url, short_code=short_code), return_model=ShortUrlCreateResult)
 
-    async def get_short_url(self, short_code: str) -> ShortUrlGetResult | None:
+    async def get_short_url(self, short_code: str, update_stats = False) -> ShortUrlGetResult | None:
         short_url: ShortUrlGetResult = await self.url_short_repo.get_one_or_none(val=short_code, field='short_code')
+        
+        if not update_stats:
+            return short_url
+        
         short_url.access_count += 1
 
         return await self.url_short_repo.update_one(data=short_url,
@@ -44,7 +48,7 @@ class URLShortenerService:
     async def delete_short_url(self, short_code: str) -> ShortUrlDeleteResult | None:
         return await self.url_short_repo.delete_one(val=short_code, field='short_code', return_model=ShortUrlDeleteResult)
 
-    # async def upsert_short_urls(self, payload: list[ShortUrlCreateRequest]) -> list[ShortUrlCreateResult]:
-    #     transformed_payload = [ShortUrlCreate(url=item.url, short_code=await self._generate_short_code()) for item in payload]
+    async def upsert_short_urls(self, payload: list[ShortUrlCreateRequest]) -> list[ShortUrlCreateResult]:
+        transformed_payload = [ShortUrlCreate(url=item.url, short_code=await self._generate_short_code()) for item in payload]
 
-    #     return await self.url_short_repo.upsert_bulk_urls(transformed_payload)
+        return await self.url_short_repo.upsert_many(data=transformed_payload, index_elements=[ShortUrl.url], update_fields=['short_code'])

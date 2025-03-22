@@ -6,30 +6,34 @@ from sqlalchemy import DateTime
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession, async_sessionmaker
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 from sqlalchemy.exc import SQLAlchemyError
-from sqlalchemy.ext.declarative import declarative_base
+# from sqlalchemy.ext.declarative import declarative_base
 
 from app.core.config import AppSettings
-from app.core.db.mixins import IdMixin, TimestampMixin
+# from app.core.db.mixins import IdMixin, TimestampMixin
 
 
-# class Base(DeclarativeBase, IdMixin, TimestampMixin):    
-#     def dict(self):
-#         """Returns a dict representation of a model."""
-#         return {c.name: getattr(self, c.name) for c in self.__table__.columns}
-
-class CustomBase(object):
+class Base(DeclarativeBase):    
     id: Mapped[int] = mapped_column("id", autoincrement=True, nullable=False, unique=True, primary_key=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.now())
     updated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), default=datetime.now())
-    
+ 
     def dict(self):
         """Returns a dict representation of a model."""
         return {c.name: getattr(self, c.name) for c in self.__table__.columns}
 
+# class CustomBase(object):
+    # id: Mapped[int] = mapped_column("id", autoincrement=True, nullable=False, unique=True, primary_key=True)
+    # created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.now())
+    # updated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), default=datetime.now())
+    
+#     def dict(self):
+#         """Returns a dict representation of a model."""
+#         return {c.name: getattr(self, c.name) for c in self.__table__.columns}
 
 
 
-Base: Type[CustomBase] = declarative_base(cls=CustomBase)
+
+# Base: Type[CustomBase] = declarative_base(cls=CustomBase)
 
 settings = AppSettings()
 
