@@ -50,5 +50,5 @@ class URLShortenerService:
 
     async def upsert_short_urls(self, payload: list[ShortUrlCreateRequest]) -> list[ShortUrlCreateResult]:
         transformed_payload = [ShortUrlCreate(url=item.url, short_code=await self._generate_short_code()) for item in payload]
-
-        return await self.url_short_repo.upsert_many(data=transformed_payload, index_elements=[ShortUrl.url], update_fields=['short_code'])
+        # index_elements=[ShortUrl.url],
+        return await self.url_short_repo.upsert_many(data=transformed_payload, index_elements=[ShortUrl.url], return_model=ShortUrlCreateResult)

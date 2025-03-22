@@ -26,6 +26,8 @@ class ShortUrlUpdate(BaseModel):
 class ShortUrlCreateRequest(BaseModel):
     url: str
 
+class ShortUrlUpsert(BaseModel):
+    data: list[ShortUrlCreate]
 
 class ShortUrlCreateResult(BaseModel):
     id: str | int
