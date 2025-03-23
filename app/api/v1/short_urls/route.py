@@ -1,15 +1,12 @@
 from fastapi import APIRouter, Depends
 from fastapi.encoders import jsonable_encoder
-from fastapi.responses import JSONResponse, RedirectResponse
-
-from typing import Optional
-
+from fastapi.responses import JSONResponse
 from app.core.common.app_response import AppResponse
 from app.core.exceptions import NotFoundException, ServerFailException
 from app.core.config import AppSettings
 
 from .exceptions import ShortUrlDeleteFail, ShortUrlNotFound
-from .schema import ShortUrlCreateRequest, ShortUrlCreateResult, ShortUrlGetResult, ShortUrlRead, ShortUrlUpdateRequest, ShortUrlUpdateResult
+from .schema import ShortUrlCreateRequest, ShortUrlCreateResult, ShortUrlDeleteManyRequest, ShortUrlGetResult, ShortUrlUpdateManyRequest, ShortUrlUpdateRequest, ShortUrlUpdateResult
 from .service import URLShortenerService
 
 settings = AppSettings()
@@ -17,15 +14,13 @@ settings = AppSettings()
 router = APIRouter(tags=["shorten"], prefix='/shorten')
 
 
-@router.post('/')
+@router.post('/', response_model=AppResponse[ShortUrlCreateResult])
 async def shorten_url(
     payload: ShortUrlCreateRequest,
     url_short_service: URLShortenerService = Depends(URLShortenerService),
 ):
     created_short_url = await url_short_service.create_short_url(payload)
-    app_response_data = AppResponse(data=created_short_url, status_code=201)
-    encoded_app_response_data = jsonable_encoder(app_response_data)
-    return JSONResponse(content=encoded_app_response_data, status_code=201)
+    return AppResponse(data=created_short_url, status_code=201)
 
 
 @router.post('/bulk-upsert', response_model=AppResponse[list[ShortUrlCreateResult]])
@@ -75,3 +70,16 @@ async def delete_url(short_code: str, url_short_service: URLShortenerService = D
         raise NotFoundException(detail="Short Url not found")
     except ShortUrlDeleteFail:
         raise ServerFailException(detail="Failed to delete url")
+
+
+@router.post('/bulk-delete')
+async def delete_many(url_ids: ShortUrlDeleteManyRequest, url_short_service: URLShortenerService = Depends(URLShortenerService)):    
+    deleted_short_url = await url_short_service.delete_many(url_ids)
+    return AppResponse(data=deleted_short_url, status_code=200, message="Successfully deleted")
+
+
+
+@router.post('/bulk-update')
+async def update_many(payload: ShortUrlUpdateManyRequest, url_short_service: URLShortenerService = Depends(URLShortenerService)):    
+    updated_result = await url_short_service.update_many(payload)
+    return AppResponse(data=updated_result, status_code=200, message="Successfully updated")

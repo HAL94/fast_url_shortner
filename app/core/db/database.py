@@ -2,18 +2,16 @@
 from datetime import datetime
 
 import logging
-from typing import Any, AsyncGenerator, Type, TypeVar
-from sqlalchemy import DateTime, UniqueConstraint, event, func, inspect
+from typing import AsyncGenerator, TypeVar
+from sqlalchemy import DateTime, inspect
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession, async_sessionmaker
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 from sqlalchemy.exc import SQLAlchemyError
-# from sqlalchemy.ext.declarative import declarative_base
+
 
 from app.core.config import AppSettings
-#  from app.core.db.mixins import IdMixin, TimestampMixin
 
 T = TypeVar('T', bound='Base')
-
 class Base(DeclarativeBase):
     id: Mapped[int] = mapped_column(
         "id", autoincrement=True, nullable=False, unique=True, primary_key=True)
@@ -36,12 +34,7 @@ class Base(DeclarativeBase):
         """Returns the table object for this model."""
         return cls.__table__
     
-@event.listens_for(Base, 'before_update', propagate=True)
-def before_update(mapper, connection, target):
-    target.updated_at = datetime.now()
 
-
-# Base: Type[CustomBase] = declarative_base(cls=CustomBase)
 settings = AppSettings()
 
 URL = f"postgresql+asyncpg://{settings.PG_USER}:{settings.PG_PW}@{
@@ -51,9 +44,7 @@ logging.log(level=logging.INFO, msg=URL)
 
 engine = create_async_engine(url=URL)
 
-
 AsyncSessionMaker = async_sessionmaker(bind=engine, expire_on_commit=False)
-
 
 async def get_async_session() -> AsyncGenerator[AsyncSession, None]:
     async with AsyncSessionMaker() as session:

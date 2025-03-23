@@ -2,7 +2,7 @@
 
 from typing import Any, ClassVar, Generic, Optional, TypeVar
 from pydantic import BaseModel
-from sqlalchemy import delete, func, insert, select, update
+from sqlalchemy import IteratorResult, Result, delete, func, insert, select, update
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.sql.elements import ColumnElement
 
@@ -36,7 +36,7 @@ class BaseRepo(Generic[DbModel, PydanticModel]):
         Accepts a Pydantic model as data, creates a new record in the database, catches
         any integrity errors, and returns the record as pydantic model.
 
-        Args:                
+        Args:
             data (BaseModel): Pydantic model
 
         Returns:
@@ -126,10 +126,10 @@ class BaseRepo(Generic[DbModel, PydanticModel]):
         return [return_model(**item.dict()) for item in result]
 
     async def get_one(self,
-                              val: Any,
-                              field: InstrumentedAttribute | None = None,
-                              where_clause: list[ColumnElement[bool]] = None,
-                              return_model: Optional[BaseModel | PydanticModel] = None):
+                      val: Any,
+                      field: InstrumentedAttribute | None = None,
+                      where_clause: list[ColumnElement[bool]] = None,
+                      return_model: Optional[BaseModel | PydanticModel] = None):
         """
         Retrieves a single record from the database matching the given criteria.
 
@@ -188,6 +188,8 @@ class BaseRepo(Generic[DbModel, PydanticModel]):
 
         if not where_clause:
             raise ValueError('must pass where_clause')
+
+        print(f"where_clause: {where_clause}")
 
         updated_db_model = await session.scalar(
             update(self._dbmodel).values(
@@ -249,3 +251,70 @@ class BaseRepo(Generic[DbModel, PydanticModel]):
             return_model = self._model
 
         return return_model(**deleted_db_model.dict())
+
+    async def delete_many(self,
+                          where_clause: list[ColumnElement[bool]],
+                          return_model: Optional[BaseModel | PydanticModel] = None):
+        """
+        Deletes multiple records from the database matching the given criteria.
+
+        Args:
+            where_clause: A list of SQLAlchemy where clauses to identify the records to delete.
+            return_model: An optional BaseModel or PydanticModel to use for returning the deleted records. Defaults to the repository's model.
+
+        Returns:
+            A list of PydanticModel instances representing the deleted records.
+
+        Raises:
+            ValueError: If no where_clause is provided.
+        """
+        session = self.session
+
+        if not where_clause:
+            raise ValueError("'where_cluse' must be passed")
+
+        deleted_model_records = await session.scalars(
+            delete(self._dbmodel).where(*where_clause).returning(self._dbmodel)
+        )
+
+        await session.commit()
+
+        result = deleted_model_records.all()
+
+        print(f"deleted_records: {result} at where_clause: {where_clause}")
+
+        if not return_model:
+            return_model = self._model
+
+        return [return_model(**item.dict()) for item in result]
+
+    async def update_many(
+        self,
+        data: list[BaseModel],
+        field: Any = 'id',
+        return_model: Optional[BaseModel | PydanticModel] = None,
+    ) -> list[BaseModel | PydanticModel]:
+
+        if not all(field in item.model_fields for item in data):
+            raise ValueError(f"Each item in 'data' must contain an '{field}' key.")
+
+        session: AsyncSession = self.session
+
+        data = [item.model_dump(exclude_none=True) for item in data]
+
+        # unlike a single record update, a bulk update does not support RETURNING
+        # it is best to update with `executemany` which receives a parameter sets
+        await session.execute(
+            update(self._dbmodel), data
+        )
+
+        await session.commit()
+
+        result = await session.scalars(
+            select(self._dbmodel).filter(
+                self._dbmodel.id.in_([item.get('id') for item in data]))
+        )
+
+        return_model = return_model or self._model
+
+        return [return_model(**item.dict()) for item in result.all()]

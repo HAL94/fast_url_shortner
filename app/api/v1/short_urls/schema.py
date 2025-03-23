@@ -1,6 +1,7 @@
 
 
 from datetime import datetime
+from re import S
 from typing import Optional
 from pydantic import AliasGenerator, BaseModel, ConfigDict
 from pydantic.alias_generators import to_camel
@@ -13,6 +14,11 @@ class ShortUrlRead(BaseModel):
     created_at: datetime
     updated_at: datetime | None
     access_count: int
+    model_config = ConfigDict(
+        alias_generator=AliasGenerator(to_camel),
+        populate_by_name=True,
+    )
+
 
 
 class ShortUrlCreate(BaseModel):
@@ -52,3 +58,24 @@ class ShortUrlGetResult(ShortUrlRead):
 
 class ShortUrlDeleteResult(ShortUrlRead):
     pass
+
+class ShortUrlDeleteManyRequest(BaseModel):
+    ids: list[int]
+
+class ShortUrlManyPayload(BaseModel):
+    id: int
+    url: Optional[str] = None
+    short_code: Optional[str] = None
+    access_count: Optional[int] = None
+
+class ShortUrlUpdateManyRequest(BaseModel):
+    records: list[ShortUrlManyPayload]
+
+class ShortUrlUpdateManyResult(BaseModel):
+    updated_records: int
+    data: list[ShortUrlRead]
+    
+    model_config = ConfigDict(
+        alias_generator=AliasGenerator(to_camel),
+        populate_by_name=True,
+    )
