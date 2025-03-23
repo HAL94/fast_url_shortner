@@ -26,5 +26,4 @@ class URLShortRepository(BaseRepo[ShortUrl, ShortUrlRead]):
         except ShortUrlNotFound:
             return None
         except Exception as e:
-            print(f"issue is: {e}")
             return None

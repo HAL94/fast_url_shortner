@@ -1,8 +1,11 @@
 
 
+
 from typing import Any, ClassVar, Generic, Optional, TypeVar
+
 from pydantic import BaseModel
-from sqlalchemy import IteratorResult, Result, delete, func, insert, select, update
+from sqlalchemy import func, delete, insert, select, update
+from sqlalchemy.exc import ProgrammingError
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.sql.elements import ColumnElement
 
@@ -83,47 +86,66 @@ class BaseRepo(Generic[DbModel, PydanticModel]):
             ... )
             [MyPydanticModel(...), MyPydanticModel(...)]
         """
+        try:
 
-        if not index_elements:
-            index_elements = [self._dbmodel.id]
+            if not index_elements:
+                index_elements = [self._dbmodel.id]
 
-        index_elements = [str(col).split('.')[1] if isinstance(
-            col, InstrumentedAttribute) else str(col) for col in index_elements]
+            index_elements = [str(col).split('.')[1] if isinstance(
+                col, InstrumentedAttribute) else str(col) for col in index_elements]
 
-        model_columns = self._dbmodel.columns()
+            model_columns = self._dbmodel.columns()
 
-        session = self.session
+            session = self.session
 
-        data_values = [item.model_dump() for item in data]
+            data_values = [item.model_dump() for item in data]
+            data_model_fields = data[0].model_fields
 
-        stmt = pg_insert(self._dbmodel).values(data_values)
+            data_keys = set(data_model_fields.keys())
+            index_keys = set(index_elements)
+            
+            # if all keys in data match with index_elements, then the operation is invalid 
+            # because there are not distinctions that could be used for the on conflict clause.
+            if len(data_keys - index_keys) == 0:
+                raise ValueError(f"Index elements match all model fields, upsert is invalid.")
+            
+            #  if no key in index_elements exists in data, then the operation is invalid
+            missing_keys = index_keys - data_keys
+            if missing_keys:                    
+                raise ValueError(
+                    f"Data passed must include the indexed_elements to handle conflicts. Missing: {missing_keys}")
 
-        updated_columns = {
-            key: getattr(stmt.excluded, key)
-            # Use the first data object's keys
-            for key in data_values[0].keys()
-            if key not in index_elements  # Ensure index elements are not updated
-        }
+            stmt = pg_insert(self._dbmodel).values(data_values)
 
-        if 'updated_at' in model_columns:
-            updated_columns['updated_at'] = func.now()
+            updated_columns = {
+                key: getattr(stmt.excluded, key)
+                # Use the first data object's keys
+                for key in data_values[0].keys()
+                if key not in index_elements  # Ensure index elements are not updated
+            }
 
-        stmt = stmt.on_conflict_do_update(
-            index_elements=index_elements,
-            set_=updated_columns
-        )
+            if 'updated_at' in model_columns:
+                updated_columns['updated_at'] = func.now()
 
-        updated_or_created_data = await session.scalars(
-            stmt.returning(self._dbmodel), execution_options={"populate_existing": True}
-        )
+            stmt = stmt.on_conflict_do_update(
+                index_elements=index_elements,
+                set_=updated_columns
+            )
 
-        await session.commit()
+            updated_or_created_data = await session.scalars(
+                stmt.returning(self._dbmodel), execution_options={"populate_existing": True}
+            )
 
-        return_model = return_model or self._model
+            await session.commit()
 
-        result = updated_or_created_data.all()
+            return_model = return_model or self._model
 
-        return [return_model(**item.dict()) for item in result]
+            result = updated_or_created_data.all()
+
+            return [return_model(**item.dict()) for item in result]
+        except ProgrammingError:
+            raise ValueError(
+                "there is no unique or exclusion constraint matching the ON CONFLICT specification. Background on this error at: https://sqlalche.me/e/20/f405)")
 
     async def get_one(self,
                       val: Any,
@@ -188,8 +210,6 @@ class BaseRepo(Generic[DbModel, PydanticModel]):
 
         if not where_clause:
             raise ValueError('must pass where_clause')
-
-        print(f"where_clause: {where_clause}")
 
         updated_db_model = await session.scalar(
             update(self._dbmodel).values(
@@ -296,7 +316,8 @@ class BaseRepo(Generic[DbModel, PydanticModel]):
     ) -> list[BaseModel | PydanticModel]:
 
         if not all(field in item.model_fields for item in data):
-            raise ValueError(f"Each item in 'data' must contain an '{field}' key.")
+            raise ValueError(
+                f"Each item in 'data' must contain an '{field}' key.")
 
         session: AsyncSession = self.session
 
