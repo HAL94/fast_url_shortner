@@ -11,6 +11,10 @@ class NotFoundException(HTTPException):
         super().__init__(status_code=status.HTTP_404_NOT_FOUND, detail=AppResponse(
             success=False, status_code=404, message=detail).__dict__)
 
+class BadRequestException(HTTPException):
+    def __init__(self, detail: Any = "Input was invalid"):
+        super().__init__(status_code=status.HTTP_400_BAD_REQUEST, detail=AppResponse(
+            success=False, status_code=400, message=detail).__dict__)
 
 class AlreadyExistsException(HTTPException):
     """Base exception for resource already exists errors."""

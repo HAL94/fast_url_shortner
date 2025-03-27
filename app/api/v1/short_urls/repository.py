@@ -1,13 +1,10 @@
 
-from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
-
 from fastapi import Depends
 from app.api.v1.short_urls.exceptions import ShortUrlNotFound
 from app.api.v1.short_urls.schema import ShortUrlRead
 from app.core.db.base_repo import BaseRepo
 from app.core.db.database import get_async_session
-
 from .model import ShortUrl
 
 

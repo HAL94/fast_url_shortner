@@ -1,6 +1,5 @@
 
 
-
 from typing import Any, ClassVar, Generic, Optional, TypeVar
 
 from pydantic import BaseModel
@@ -13,7 +12,7 @@ from app.core.db.database import Base
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm.attributes import InstrumentedAttribute
 
-from app.core.exceptions import NotFoundException
+from app.core.exceptions import BadRequestException, NotFoundException
 
 DbModel = TypeVar('T', bound=Base)  # type: ignore
 PydanticModel = TypeVar('M', bound=BaseModel)
@@ -103,15 +102,16 @@ class BaseRepo(Generic[DbModel, PydanticModel]):
 
             data_keys = set(data_model_fields.keys())
             index_keys = set(index_elements)
-            
-            # if all keys in data match with index_elements, then the operation is invalid 
+
+            # if all keys in data match with index_elements, then the operation is invalid
             # because there are not distinctions that could be used for the on conflict clause.
             if len(data_keys - index_keys) == 0:
-                raise ValueError(f"Index elements match all model fields, upsert is invalid.")
-            
+                raise ValueError(
+                    f"Index elements match all model fields, upsert is invalid.")
+
             #  if no key in index_elements exists in data, then the operation is invalid
             missing_keys = index_keys - data_keys
-            if missing_keys:                    
+            if missing_keys:
                 raise ValueError(
                     f"Data passed must include the indexed_elements to handle conflicts. Missing: {missing_keys}")
 
@@ -146,6 +146,33 @@ class BaseRepo(Generic[DbModel, PydanticModel]):
         except ProgrammingError:
             raise ValueError(
                 "there is no unique or exclusion constraint matching the ON CONFLICT specification. Background on this error at: https://sqlalche.me/e/20/f405)")
+
+    async def get_many(self,
+                       page: int,
+                       size: int,
+                       where_clause: list[ColumnElement[bool]] = [],
+                       order_clause: list[InstrumentedAttribute] = [],
+                       return_model: Optional[BaseModel | PydanticModel] = None):
+
+        session = self.session        
+
+        stmt = select(self._dbmodel).where(
+            *where_clause).order_by(*order_clause).offset((page-1)*size).limit(size)
+
+        result = await session.scalars(stmt)
+
+        total_count = await session.scalar(select(func.count()).select_from(select(self._dbmodel).where(*where_clause).subquery()))        
+
+        # print(f"total_count: {total_count}")
+
+        return_model = return_model or self._model
+
+        result = {
+            "data": [item.dict() for item in result],
+            "total_count": total_count
+        }
+
+        return return_model(**result)
 
     async def get_one(self,
                       val: Any,

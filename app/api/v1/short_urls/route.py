@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Query
 from fastapi.encoders import jsonable_encoder
 from fastapi.responses import JSONResponse
 from app.core.common.app_response import AppResponse
@@ -6,7 +6,7 @@ from app.core.exceptions import NotFoundException, ServerFailException
 from app.core.config import AppSettings
 
 from .exceptions import ShortUrlDeleteFail, ShortUrlNotFound
-from .schema import ShortUrlCreateRequest, ShortUrlCreateResult, ShortUrlDeleteManyRequest, ShortUrlGetResult, ShortUrlUpdateManyRequest, ShortUrlUpdateRequest, ShortUrlUpdateResult
+from .schema import ShortUrlCreateRequest, ShortUrlCreateResult, ShortUrlDeleteManyRequest, ShortUrlGetManyRequest, ShortUrlGetManyResult, ShortUrlGetResult, ShortUrlRead, ShortUrlUpdateManyRequest, ShortUrlUpdateRequest
 from .service import URLShortenerService
 
 settings = AppSettings()
@@ -22,6 +22,13 @@ async def shorten_url(
     created_short_url = await url_short_service.create_short_url(payload)
     return AppResponse(data=created_short_url, status_code=201)
 
+@router.get('/', response_model=AppResponse[ShortUrlGetManyResult])
+async def get_urls(
+    payload: ShortUrlGetManyRequest = Query(...),
+    url_short_service: URLShortenerService = Depends(URLShortenerService),
+):
+    data = await url_short_service.get_many(payload=payload)
+    return AppResponse(data=data)
 
 @router.post('/bulk-upsert', response_model=AppResponse[list[ShortUrlCreateResult]])
 async def upsert_many(
@@ -52,7 +59,7 @@ async def get_url_by_code(short_code: str, url_short_service: URLShortenerServic
         raise NotFoundException(detail="Short Url not found")
 
 
-@router.put('/{short_code}', response_model=AppResponse[ShortUrlUpdateResult])
+@router.put('/{short_code}', response_model=AppResponse[ShortUrlRead])
 async def update_url(short_code: str, short_url_update: ShortUrlUpdateRequest, url_short_service: URLShortenerService = Depends(URLShortenerService)):
     try:
         updated_short_url = await url_short_service.update_short_url(short_code=short_code, new_url=short_url_update.url)
