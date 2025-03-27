@@ -7,7 +7,7 @@ from pydantic import AliasGenerator, BaseModel, ConfigDict
 from pydantic.alias_generators import to_camel
 
 from app.api.v1.short_urls.model import ShortUrl
-from app.core.common.mixins import PaginationMixin
+from app.core.common.mixins.pagination import PaginationMixin
 
 
 class ShortUrlRead(BaseModel):
