@@ -18,7 +18,13 @@ class LogicalOperator(enum.Enum):
     GTE = '>='
     GT = '>'
     NOT = '!='
+    
+    def __str__(self):
+        return self.value
 
+    @classmethod
+    def all_values(cls):
+        return str([operator.value for operator in cls])
 
 class InvalidOperator(Exception):
     pass
@@ -53,7 +59,7 @@ class FieldOperation:
         raise InvalidOperator
 
     @classmethod
-    def get_sql_expression(cls, column: str, operator: LogicalOperator, column_value: Any) -> list[ColumnElement]:
+    def create_sql_expression(cls, column: str, operator: LogicalOperator, column_value: Any) -> list[ColumnElement]:
         if operator is LogicalOperator.GTE:
             return [column >= column_value]
         if operator is LogicalOperator.GT:
@@ -79,11 +85,11 @@ class PaginationParser:
         return [field.strip() for field in fields.split(',')]
 
     @classmethod
-    def validate_field(cls, field: str, allowed_fields: list[str], error_message: str) -> None:
+    def validate_field(cls, field: str, allowed_fields: list[str], error_message: str = "Sorting not allowed on field '{field}'. Allowed fields are {allowed_fields}") -> None:
         """Validates if a field is in the allowed list."""
         # print(f"validatin if {field} exist in {allowed_fields}")
         if field not in allowed_fields:
-            raise ValueError(error_message.format(
+            raise BadRequestException(error_message.format(
                 field=field, allowed_fields=allowed_fields))
 
     @classmethod
@@ -117,15 +123,15 @@ class PaginationParser:
 
 
 class PaginationSortParser(PaginationParser):
-    def _process_sort_fields(self, model: Base) -> list[InstrumentedAttribute]:
+    def _process_sort_fields(self, sort_by_str: str, model: Base) -> list[InstrumentedAttribute]:
         """
         Process and validate sort fields.
 
         :param model: SQLAlchemy model class
         :return: List of sort expressions
         """
-        print(f"sort_by is: {self.sort_by}")
-        sort_fields = self.split_and_clean_fields(self.sort_by)
+        # print(f"sort_by is: {sort_by_str}")
+        sort_fields = self.split_and_clean_fields(sort_by_str)
         sort_by = []
 
         for field in sort_fields:
@@ -146,14 +152,14 @@ class PaginationSortParser(PaginationParser):
 
 
 class PaginationFilterParser(PaginationParser):
-    def _process_filter_fields(self, model: Base) -> list[ColumnElement]:
+    def _process_filter_fields(self, filter_by_str: str, model: Base) -> list[ColumnElement]:
         """
         Process and validate filter fields with type conversion.
 
         :param model: SQLAlchemy model class
         :return: List of filter expressions
         """
-        filter_fields = self.split_and_clean_fields(self.filter_by)
+        filter_fields = self.split_and_clean_fields(filter_by_str)
         filter_by = []
 
         for pair in filter_fields:
@@ -174,16 +180,16 @@ class PaginationFilterParser(PaginationParser):
                 converted_value = self.convert_value(
                     value=value, column_type=column_type, field_name=key)
 
-                sql_expr = FieldOperation.get_sql_expression(
+                sql_expr = FieldOperation.create_sql_expression(
                     column=column, operator=operator, column_value=converted_value)
 
-                print(f"sql_expr: {sql_expr}")
+                # print(f"sql_expr: {sql_expr}")
 
                 filter_by.extend(sql_expr)
             except InvalidOperator:
                 print(f"Invalid oeprator passed")
             except ValueError as e:
-                print(f"Invalid filter: {pair} {operator}")
+                # print(f"Invalid filter: {pair} {operator}")
                 raise BadRequestException(detail=str(e)) from e
 
         return filter_by
@@ -196,8 +202,8 @@ class PaginationMixin(BaseModel, PaginationFilterParser, PaginationSortParser):
     filter_by: Optional[str] = None
 
     def convert_to_model(self, model: Base):
-        sort_by = self._process_sort_fields(model)
-        filter_by = self._process_filter_fields(model)
+        sort_by = self._process_sort_fields(self.sort_by, model)
+        filter_by = self._process_filter_fields(self.filter_by, model)
         return sort_by, filter_by
 
     @classmethod
@@ -209,14 +215,11 @@ class PaginationMixin(BaseModel, PaginationFilterParser, PaginationSortParser):
                     return v
 
                 sort_fields = cls.split_and_clean_fields(v)
-
+                
                 for field in sort_fields:
                     clean_field = field.lstrip('-')
 
-                    error_message = "Sorting not allowed on field '{field}'. Allowed fields are {allowed_fields}"
-
-                    cls.validate_field(field=clean_field, allowed_fields=sortable_fields,
-                                       error_message=error_message)
+                    cls.validate_field(field=clean_field, allowed_fields=sortable_fields)
 
                 return v
 
@@ -227,6 +230,8 @@ class PaginationMixin(BaseModel, PaginationFilterParser, PaginationSortParser):
 
                 filter_pairs = cls.split_and_clean_fields(v)
 
+                error_message = "Filtering not allowed on field '{field}'. Allowed fields are {allowed_fields}"
+                # operators_allowed = [operator.value for operator in LogicalOperator]                
                 for pair in filter_pairs:
                     field = None
 
@@ -236,11 +241,11 @@ class PaginationMixin(BaseModel, PaginationFilterParser, PaginationSortParser):
                         field, _ = pair.split(operator.value, 1)
 
                     except Exception:
-                        raise ValueError(f"Invalid filter format. Passed field is '{pair}'."
-                                         " Use 'field:value' format")
+                        raise ValueError(f"Invalid filter operator. Passed query is '{pair}'."
+                                         f" Use '<field><op><value>' format where op could be: {LogicalOperator.all_values()}")
 
-                    cls.validate_field(field=field, allowed_fields=filterable_fields,
-                                       error_message="Filtering not allowed on field '{field}'. Allowed fields are {allowed_fields}")
+                    
+                    cls.validate_field(field=field, allowed_fields=filterable_fields, error_message=error_message)
                 return v
 
         return ValidatedPaginationMixin
