@@ -23,6 +23,10 @@ class LogicalOperator(enum.Enum):
 class InvalidOperator(Exception):
     pass
 
+class InvalidDatetimeValue(Exception):
+    def __init__(self, message = 'Type of field is datetime, value has to be in isoformat'):
+        super().__init__(message)
+        self.message = message
 
 class FieldOperation:
     @classmethod
@@ -66,35 +70,53 @@ class FieldOperation:
         raise ValueError("No suppoerted oeprations were determined")
 
 
-class PaginationMixin(BaseModel):
-    page: int = Field(ge=1)
-    size: int = Field(ge=1)
-    # comma separated str, if string prefixed by '-' it is descending order, else it is asecnding: -short_code,created_at
-    sort_by: Optional[str] = None
-    # comma seperated str with key-value pairs: "short_code:G3HI8d,access_count:2"
-    filter_by: Optional[str] = None
+class PaginationParser:
 
-    #main
-    def convert_to_model(self, model: Base):
-        sort_by = self._process_sort_fields(model)
-        filter_by = self._process_filter_fields(model)
-        return sort_by, filter_by
-
-    #helper
     @classmethod
-    def _split_and_clean_fields(cls, fields: Optional[str] = None) -> list[str]:
+    def split_and_clean_fields(cls, fields: Optional[str] = None) -> list[str]:
         if not fields:
             return []
         return [field.strip() for field in fields.split(',')]
-    #helper
+
     @classmethod
-    def _validate_field(cls, field: str, allowed_fields: list[str], error_message: str) -> None:
+    def validate_field(cls, field: str, allowed_fields: list[str], error_message: str) -> None:
         """Validates if a field is in the allowed list."""
         # print(f"validatin if {field} exist in {allowed_fields}")
         if field not in allowed_fields:
             raise ValueError(error_message.format(
                 field=field, allowed_fields=allowed_fields))
-    #business
+
+    @classmethod
+    def convert_value(cls, *, value: Any, column_type: Any, field_name: str):
+        """
+        Convert value to appropriate type based on column type.
+
+        :param value: String value to convert
+        :param column_type: SQLAlchemy column type
+        :return: Converted value
+        """
+        try:
+            if isinstance(column_type, Integer):
+                return int(value)
+            if isinstance(column_type, Float):
+                return float(value)
+            if isinstance(column_type, Boolean):
+                return bool(value)
+            if isinstance(column_type, DateTime):                
+                from datetime import datetime
+                try:
+                    return datetime.fromisoformat(value)
+                except Exception:
+                    raise InvalidDatetimeValue(message = f"Expected type of '{field_name}' is '{str(column_type).lower()}', could not parse the value '{value}'")
+            return value
+        except InvalidDatetimeValue as e:
+            raise BadRequestException(detail=str(e))
+        except Exception:
+            raise ValueError(
+                f"Type of field '{field_name}' is '{str(column_type).lower()}' but value passed is: '{type(value).__name__}'")
+
+
+class PaginationSortParser(PaginationParser):
     def _process_sort_fields(self, model: Base) -> list[InstrumentedAttribute]:
         """
         Process and validate sort fields.
@@ -102,7 +124,8 @@ class PaginationMixin(BaseModel):
         :param model: SQLAlchemy model class
         :return: List of sort expressions
         """
-        sort_fields = self._split_and_clean_fields(self.sort_by)
+        print(f"sort_by is: {self.sort_by}")
+        sort_fields = self.split_and_clean_fields(self.sort_by)
         sort_by = []
 
         for field in sort_fields:
@@ -120,7 +143,9 @@ class PaginationMixin(BaseModel):
                 print(f"Invalid sort field: {clean_field}")
 
         return sort_by
-    #business
+
+
+class PaginationFilterParser(PaginationParser):
     def _process_filter_fields(self, model: Base) -> list[ColumnElement]:
         """
         Process and validate filter fields with type conversion.
@@ -128,18 +153,17 @@ class PaginationMixin(BaseModel):
         :param model: SQLAlchemy model class
         :return: List of filter expressions
         """
-        filter_fields = self._split_and_clean_fields(self.filter_by)
-
+        filter_fields = self.split_and_clean_fields(self.filter_by)
         filter_by = []
 
         for pair in filter_fields:
             if not pair:
                 continue
-            operator = None
+
+            operator: LogicalOperator = None
             try:
 
-                operator: LogicalOperator = FieldOperation.determine_operator(
-                    pair)
+                operator = FieldOperation.determine_operator(pair)
 
                 key, value = pair.split(operator.value, 1)
 
@@ -147,8 +171,8 @@ class PaginationMixin(BaseModel):
 
                 column_type = column.type
 
-                converted_value = self._convert_value(
-                    value=value, column_type=column_type)
+                converted_value = self.convert_value(
+                    value=value, column_type=column_type, field_name=key)
 
                 sql_expr = FieldOperation.get_sql_expression(
                     column=column, operator=operator, column_value=converted_value)
@@ -163,31 +187,19 @@ class PaginationMixin(BaseModel):
                 raise BadRequestException(detail=str(e)) from e
 
         return filter_by
-    #business
-    def _convert_value(self, *, value: Any, column_type: Any):
-        """
-        Convert value to appropriate type based on column type.
 
-        :param value: String value to convert
-        :param column_type: SQLAlchemy column type
-        :return: Converted value
-        """
-        try:
-            if isinstance(column_type, Integer):
-                return int(value)
-            if isinstance(column_type, Float):
-                return float(value)
-            if isinstance(column_type, Boolean):
-                return bool(value)
-            if isinstance(column_type, DateTime):
-                from datetime import datetime
-                return datetime.date(value)
-            return value
-        except Exception:
-            raise ValueError(
-                f"Type of column is '{str(column_type).lower()}' but value passed is: '{type(value).__name__}'")
 
-    #main
+class PaginationMixin(BaseModel, PaginationFilterParser, PaginationSortParser):
+    page: int = Field(ge=1)
+    size: int = Field(ge=1)
+    sort_by: Optional[str] = None
+    filter_by: Optional[str] = None
+
+    def convert_to_model(self, model: Base):
+        sort_by = self._process_sort_fields(model)
+        filter_by = self._process_filter_fields(model)
+        return sort_by, filter_by
+
     @classmethod
     def create_pagination_mixin(cls, sortable_fields: list[str] = [], filterable_fields: list[str] = []):
         class ValidatedPaginationMixin(cls):
@@ -196,15 +208,15 @@ class PaginationMixin(BaseModel):
                 if not v:
                     return v
 
-                sort_fields = cls._split_and_clean_fields(v)
+                sort_fields = cls.split_and_clean_fields(v)
 
                 for field in sort_fields:
                     clean_field = field.lstrip('-')
 
                     error_message = "Sorting not allowed on field '{field}'. Allowed fields are {allowed_fields}"
 
-                    cls._validate_field(field=clean_field, allowed_fields=sortable_fields,
-                                        error_message=error_message)
+                    cls.validate_field(field=clean_field, allowed_fields=sortable_fields,
+                                       error_message=error_message)
 
                 return v
 
@@ -213,8 +225,8 @@ class PaginationMixin(BaseModel):
                 if not v:
                     return v
 
-                filter_pairs = cls._split_and_clean_fields(v)
-                
+                filter_pairs = cls.split_and_clean_fields(v)
+
                 for pair in filter_pairs:
                     field = None
 
@@ -222,13 +234,13 @@ class PaginationMixin(BaseModel):
                         operator: LogicalOperator = FieldOperation.determine_operator(
                             pair)
                         field, _ = pair.split(operator.value, 1)
-                        
+
                     except Exception:
                         raise ValueError(f"Invalid filter format. Passed field is '{pair}'."
                                          " Use 'field:value' format")
 
-                    cls._validate_field(field=field, allowed_fields=filterable_fields,
-                                        error_message="Filtering not allowed on field '{field}'. Allowed fields are {allowed_fields}")
+                    cls.validate_field(field=field, allowed_fields=filterable_fields,
+                                       error_message="Filtering not allowed on field '{field}'. Allowed fields are {allowed_fields}")
                 return v
 
         return ValidatedPaginationMixin
