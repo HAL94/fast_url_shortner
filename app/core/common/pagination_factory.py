@@ -1,14 +1,29 @@
-
 import enum
 from typing import Any, Optional
-
 from pydantic import BaseModel, Field, field_validator
-from sqlalchemy import Boolean, ColumnElement, DateTime, asc, desc
-from sqlalchemy.sql.sqltypes import Integer, Float
+from sqlalchemy import Boolean, ColumnElement, DateTime, Float, Integer, asc, desc
 from sqlalchemy.orm.attributes import InstrumentedAttribute
+
 
 from app.core.db.database import Base
 from app.core.exceptions import BadRequestException
+
+
+class PaginationQuery(BaseModel):
+    page: int = Field(ge=1)
+    size: int = Field(ge=1)
+    sort_by: Optional[str] = None
+    filter_by: Optional[str] = None
+
+
+class InvalidDatetimeValue(Exception):
+    def __init__(self, message='Type of field is datetime, value has to be in isoformat'):
+        super().__init__(message)
+        self.message = message
+
+
+class InvalidOperator(Exception):
+    pass
 
 
 class LogicalOperator(enum.Enum):
@@ -18,7 +33,7 @@ class LogicalOperator(enum.Enum):
     GTE = '>='
     GT = '>'
     NOT = '!='
-    
+
     def __str__(self):
         return self.value
 
@@ -26,13 +41,6 @@ class LogicalOperator(enum.Enum):
     def all_values(cls):
         return str([operator.value for operator in cls])
 
-class InvalidOperator(Exception):
-    pass
-
-class InvalidDatetimeValue(Exception):
-    def __init__(self, message = 'Type of field is datetime, value has to be in isoformat'):
-        super().__init__(message)
-        self.message = message
 
 class FieldOperation:
     @classmethod
@@ -77,7 +85,6 @@ class FieldOperation:
 
 
 class PaginationParser:
-
     @classmethod
     def split_and_clean_fields(cls, fields: Optional[str] = None) -> list[str]:
         if not fields:
@@ -108,12 +115,13 @@ class PaginationParser:
                 return float(value)
             if isinstance(column_type, Boolean):
                 return bool(value)
-            if isinstance(column_type, DateTime):                
+            if isinstance(column_type, DateTime):
                 from datetime import datetime
                 try:
                     return datetime.fromisoformat(value)
                 except Exception:
-                    raise InvalidDatetimeValue(message = f"Expected type of '{field_name}' is '{str(column_type).lower()}', could not parse the value '{value}'")
+                    raise InvalidDatetimeValue(
+                        message=f"Expected type of '{field_name}' is '{str(column_type).lower()}', could not parse the value '{value}'")
             return value
         except InvalidDatetimeValue as e:
             raise BadRequestException(detail=str(e))
@@ -195,31 +203,31 @@ class PaginationFilterParser(PaginationParser):
         return filter_by
 
 
-class PaginationMixin(BaseModel, PaginationFilterParser, PaginationSortParser):
-    page: int = Field(ge=1)
-    size: int = Field(ge=1)
-    sort_by: Optional[str] = None
-    filter_by: Optional[str] = None
+class PaginationFactory:
+    @staticmethod
+    def create_pagination(sortable_fields: list[str] = [], filterable_fields: list[str] = []):
+        filter_parser = PaginationFilterParser()
+        sort_parser = PaginationSortParser()
 
-    def convert_to_model(self, model: Base):
-        sort_by = self._process_sort_fields(self.sort_by, model)
-        filter_by = self._process_filter_fields(self.filter_by, model)
-        return sort_by, filter_by
+        class CustomPaginationQuery(PaginationQuery):
+            def convert_to_model(self, model: Base):
+                sort_by = sort_parser._process_sort_fields(self.sort_by, model)
+                filter_by = filter_parser._process_filter_fields(
+                    self.filter_by, model)
+                return sort_by, filter_by
 
-    @classmethod
-    def create_pagination_mixin(cls, sortable_fields: list[str] = [], filterable_fields: list[str] = []):
-        class ValidatedPaginationMixin(cls):
             @field_validator('sort_by')
             def validate_sort_fields(cls, v):
                 if not v:
                     return v
 
-                sort_fields = cls.split_and_clean_fields(v)
-                
+                sort_fields = sort_parser.split_and_clean_fields(v)
+
                 for field in sort_fields:
                     clean_field = field.lstrip('-')
 
-                    cls.validate_field(field=clean_field, allowed_fields=sortable_fields)
+                    sort_parser.validate_field(field=clean_field,
+                                               allowed_fields=sortable_fields)
 
                 return v
 
@@ -227,11 +235,10 @@ class PaginationMixin(BaseModel, PaginationFilterParser, PaginationSortParser):
             def validate_filter_fields(cls, v):
                 if not v:
                     return v
-
-                filter_pairs = cls.split_and_clean_fields(v)
-
+                filter_pairs = filter_parser.split_and_clean_fields(v)
+                
                 error_message = "Filtering not allowed on field '{field}'. Allowed fields are {allowed_fields}"
-                # operators_allowed = [operator.value for operator in LogicalOperator]                
+
                 for pair in filter_pairs:
                     field = None
 
@@ -244,8 +251,7 @@ class PaginationMixin(BaseModel, PaginationFilterParser, PaginationSortParser):
                         raise ValueError(f"Invalid filter operator. Passed query is '{pair}'."
                                          f" Use '<field><op><value>' format where op could be: {LogicalOperator.all_values()}")
 
-                    
-                    cls.validate_field(field=field, allowed_fields=filterable_fields, error_message=error_message)
+                    filter_parser.validate_field(
+                        field=field, allowed_fields=filterable_fields, error_message=error_message)
                 return v
-
-        return ValidatedPaginationMixin
+        return CustomPaginationQuery

@@ -7,7 +7,7 @@ from pydantic import AliasGenerator, BaseModel, ConfigDict
 from pydantic.alias_generators import to_camel
 
 from app.api.v1.short_urls.model import ShortUrl
-from app.core.common.mixins.pagination import PaginationMixin
+from app.core.common.pagination_factory import PaginationFactory
 
 
 class ShortUrlRead(BaseModel):
@@ -94,7 +94,8 @@ class ShortUrlUpdateManyResult(BaseModel):
     )
 
 
-PaginatedShortUrl = PaginationMixin.create_pagination_mixin(sortable_fields=ShortUrl.columns(), filterable_fields=ShortUrl.columns())
+PaginatedShortUrl = PaginationFactory.create_pagination(sortable_fields=ShortUrl.columns(), filterable_fields=ShortUrl.columns())
+# PaginatedShortUrl = PaginationMixin.create_pagination_mixin(sortable_fields=ShortUrl.columns(), filterable_fields=ShortUrl.columns())
 class ShortUrlGetManyRequest(PaginatedShortUrl):    
     pass
 
