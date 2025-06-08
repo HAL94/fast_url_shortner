@@ -18,6 +18,13 @@ DbModel = TypeVar('T', bound=Base)  # type: ignore
 PydanticModel = TypeVar('M', bound=BaseModel)
 
 
+class PaginatedResponse(BaseModel, Generic[PydanticModel]):
+    data: list[PydanticModel]
+    total_count: int
+    page: int
+    size: int
+
+
 class BaseRepo(Generic[DbModel, PydanticModel]):
     __dbmodel__: ClassVar[DbModel]
     __model__: ClassVar[PydanticModel]
@@ -90,7 +97,7 @@ class BaseRepo(Generic[DbModel, PydanticModel]):
             if not index_elements:
                 index_elements = [self._dbmodel.id]
 
-            index_elements = [str(col).split('.')[1] if isinstance(
+            index_elements = [col.name if isinstance(
                 col, InstrumentedAttribute) else str(col) for col in index_elements]
 
             model_columns = self._dbmodel.columns()
@@ -152,31 +159,34 @@ class BaseRepo(Generic[DbModel, PydanticModel]):
                        size: int,
                        where_clause: list[ColumnElement[bool]] = [],
                        order_clause: list[InstrumentedAttribute] = [],
-                       return_model: Optional[BaseModel | PydanticModel] = None):
+                       return_model: Optional[BaseModel | PydanticModel] = None) -> PaginatedResponse[PydanticModel]:
 
-        session = self.session        
+        session = self.session
 
         stmt = select(self._dbmodel).where(
             *where_clause).order_by(*order_clause).offset((page-1)*size).limit(size)
 
         result = await session.scalars(stmt)
 
-        total_count = await session.scalar(select(func.count()).select_from(select(self._dbmodel).where(*where_clause).subquery()))        
+        total_count = await session.scalar(select(func.count()).select_from(select(self._dbmodel).where(*where_clause).subquery()))
 
         # print(f"total_count: {total_count}")
 
         return_model = return_model or self._model
 
-        result = {
-            "data": [item.dict() for item in result],
-            "total_count": total_count
-        }
-
-        return return_model(**result)
+        return PaginatedResponse(
+            data=[
+                return_model(**item.dict())
+                for item in result.all()
+            ],
+            total_count=total_count,
+            page=page,
+            size=size
+        )
 
     async def get_one(self,
                       val: Any,
-                      field: InstrumentedAttribute | None = None,
+                      field: InstrumentedAttribute | str | None = None,
                       where_clause: list[ColumnElement[bool]] = None,
                       return_model: Optional[BaseModel | PydanticModel] = None):
         """
@@ -199,7 +209,10 @@ class BaseRepo(Generic[DbModel, PydanticModel]):
         if field is None:
             field = self._dbmodel.id
 
-        where_cond: list = [getattr(self._dbmodel, field) == val]
+        if isinstance(field, InstrumentedAttribute):
+            where_cond: list = [field == val]
+        else:
+            where_cond: list = [getattr(self._dbmodel, field) == val]
 
         if where_clause:
             where_cond.extend(where_clause)
@@ -278,7 +291,10 @@ class BaseRepo(Generic[DbModel, PydanticModel]):
         if field is None:
             field = self._dbmodel.id
 
-        where_cond: list = [getattr(self._dbmodel, field) == val]
+        if isinstance(field, InstrumentedAttribute):
+            where_cond: list = [field == val]
+        else:
+            where_cond: list = [getattr(self._dbmodel, field) == val]
 
         if where_clause:
             where_cond.extend(where_clause)
@@ -341,28 +357,56 @@ class BaseRepo(Generic[DbModel, PydanticModel]):
         field: Any = 'id',
         return_model: Optional[BaseModel | PydanticModel] = None,
     ) -> list[BaseModel | PydanticModel]:
+        """
+        We expect that data is a list of dictionaries, where each dictionary element will have a field acting as primary key. This field should be passed to the `field` argument in this function.
 
-        if not all(field in item.model_fields for item in data):
+
+        Example usage:
+            session.execute(
+            ...     update(User),
+            ...     [
+            ...         {"id": 1, "fullname": "Spongebob Squarepants"},
+            ...         {"id": 3, "fullname": "Patrick Star"},
+            ...         {"id": 5, "fullname": "Eugene H. Krabs"},
+            ...     ],
+            ... )
+        """
+        if any(field not in item.model_fields for item in data):
             raise ValueError(
-                f"Each item in 'data' must contain an '{field}' key.")
+                f"Model is invalid: item in 'data' must contain an '{field}' key.")
+
+        if any(field not in item.model_dump(exclude_unset=True).keys() for item in data):
+            raise ValueError(
+                f"Your passed data sequence contains items that are missing the field: {field}")
 
         session: AsyncSession = self.session
 
-        data = [item.model_dump(exclude_none=True) for item in data]
+        update_values = [item.model_dump(exclude_none=True) for item in data]
 
         # unlike a single record update, a bulk update does not support RETURNING
         # it is best to update with `executemany` which receives a parameter sets
         await session.execute(
-            update(self._dbmodel), data
+            update(self._dbmodel), update_values
         )
 
         await session.commit()
+        
+        field_values = [item.get(field)
+                        for item in update_values]
+        
+        print(field_values)
+        
+        where_clause = getattr(self._dbmodel, field).in_(field_values)
 
         result = await session.scalars(
-            select(self._dbmodel).filter(
-                self._dbmodel.id.in_([item.get('id') for item in data]))
+            select(self._dbmodel).where(
+                where_clause)
         )
+        
 
         return_model = return_model or self._model
+        
+        result = [return_model(**item.dict()) for item in result.all()]
+        
 
-        return [return_model(**item.dict()) for item in result.all()]
+        return result

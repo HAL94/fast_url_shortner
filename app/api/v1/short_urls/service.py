@@ -5,9 +5,9 @@ import random
 from sqlalchemy import asc, desc
 
 from app.api.v1.short_urls.model import ShortUrl
-from app.api.v1.short_urls.schema import ShortUrlCreate, ShortUrlCreateRequest, ShortUrlCreateResult, ShortUrlDeleteManyRequest, ShortUrlDeleteResult, ShortUrlGetManyRequest, ShortUrlGetManyResult, ShortUrlGetResult, ShortUrlUpdate, ShortUrlUpdateManyRequest, ShortUrlUpdateManyResult, ShortUrlUpdateResult
+from app.api.v1.short_urls.schema import ShortUrlCreate, ShortUrlCreateRequest, ShortUrlCreateResult, ShortUrlDeleteManyRequest, ShortUrlDeleteResult, ShortUrlGetManyRequest, ShortUrlGetManyResult, ShortUrlGetResult, ShortUrlRead, ShortUrlUpdate, ShortUrlUpdateManyRequest, ShortUrlUpdateManyResult, ShortUrlUpdateResult
 from app.core.db.dependencies import get_repository
-from app.core.exceptions import BadRequestException
+from app.core.exceptions import BadRequestException, NotFoundException
 
 from .repository import URLShortRepository
 
@@ -31,6 +31,9 @@ class URLShortenerService:
     async def get_short_url(self, short_code: str, update_stats=False) -> ShortUrlGetResult | None:
         short_url: ShortUrlGetResult = await self.url_short_repo.get_by_short_code(short_code=short_code)
 
+        if not short_url:
+            raise NotFoundException
+        
         if not update_stats:
             return short_url
 
@@ -60,4 +63,6 @@ class URLShortenerService:
 
     async def get_many(self, payload: ShortUrlGetManyRequest) -> ShortUrlGetManyResult:
         sort_by, filter_by = payload.convert_to_model(ShortUrl)
-        return await self.url_short_repo.get_many(page=payload.page, size=payload.size, order_clause=sort_by, where_clause=filter_by, return_model=ShortUrlGetManyResult) 
+        paginated_short_urls = await self.url_short_repo.get_many(page=payload.page, size=payload.size, order_clause=sort_by, where_clause=filter_by, return_model=ShortUrlRead) 
+        
+        return ShortUrlGetManyResult(total_count=paginated_short_urls.total_count, data=paginated_short_urls.data)
